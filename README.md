@@ -45,3 +45,5 @@ Metrics & Monitoring: Prometheus, Grafana
 AI/ML: Scikit-Learn (IsolationForest, RandomForest)
 
 Deployment: Docker, Docker Compose
+
+# this project was created by the work of me and my binome  .... 
