@@ -1,0 +1,193 @@
+# ══════════════════════════════════════════════════════════════════════════════
+# XDR Platform — Sigma-Compatible Detection Rules
+# Format: YAML rule definitions mapped to MITRE ATT&CK
+# Each rule is evaluated by the CorrelationEngine per log event.
+# ══════════════════════════════════════════════════════════════════════════════
+
+rules:
+  # ── Credential Access ────────────────────────────────────────────────────────
+  - id: XDR-001
+    name: "SSH Brute Force Attempt"
+    description: "Multiple failed SSH authentication attempts from a single source IP"
+    severity: HIGH
+    score_weight: 35
+    mitre:
+      tactic: "Credential Access"
+      technique: "T1110"
+      sub_technique: "T1110.001"
+      name: "Brute Force: Password Guessing"
+    wazuh_rule_ids: ["5710", "5711", "5712"]
+    log_patterns:
+      - "Failed password for"
+      - "Invalid user"
+      - "authentication failure"
+    condition:
+      event_count_threshold: 5
+      time_window_seconds: 300
+    tags: ["brute-force", "ssh", "authentication"]
+
+  - id: XDR-002
+    name: "Successful Login After Brute Force"
+    description: >
+      Successful SSH authentication following multiple failures — indicates
+      successful credential compromise. HIGH PRIORITY.
+    severity: CRITICAL
+    score_weight: 80
+    mitre:
+      tactic: "Initial Access"
+      technique: "T1078"
+      name: "Valid Accounts"
+    wazuh_rule_ids: ["5503", "5501"]
+    log_patterns:
+      - "Accepted password for"
+      - "Accepted publickey for"
+    condition:
+      requires_prior_rule: "XDR-001"
+      time_window_seconds: 3600
+    tags: ["credential-access", "initial-access", "high-priority"]
+
+  # ── Lateral Movement ─────────────────────────────────────────────────────────
+  - id: XDR-003
+    name: "Remote Service Exploitation"
+    description: "Detected use of remote services for lateral movement (SSH, RDP, WMI)"
+    severity: HIGH
+    score_weight: 45
+    mitre:
+      tactic: "Lateral Movement"
+      technique: "T1021"
+      name: "Remote Services"
+    wazuh_rule_ids: ["5706", "5707"]
+    log_patterns:
+      - "session opened for user"
+      - "New session"
+      - "pam_unix.*session.*opened"
+    tags: ["lateral-movement", "remote-services"]
+
+  # ── Persistence ───────────────────────────────────────────────────────────────
+  - id: XDR-004
+    name: "Cron / Scheduled Task Modification"
+    description: "Modification of scheduled tasks — common persistence mechanism"
+    severity: MEDIUM
+    score_weight: 45
+    mitre:
+      tactic: "Persistence"
+      technique: "T1053"
+      sub_technique: "T1053.003"
+      name: "Scheduled Task/Job: Cron"
+    wazuh_rule_ids: ["2502", "2503"]
+    log_patterns:
+      - "CRON"
+      - "crontab"
+      - "at command"
+    tags: ["persistence", "cron", "scheduled-task"]
+
+  # ── Execution ─────────────────────────────────────────────────────────────────
+  - id: XDR-005
+    name: "Suspicious Command Execution"
+    description: "Execution of commands associated with post-exploitation toolkits"
+    severity: HIGH
+    score_weight: 55
+    mitre:
+      tactic: "Execution"
+      technique: "T1059"
+      sub_technique: "T1059.004"
+      name: "Command and Scripting Interpreter: Unix Shell"
+    wazuh_rule_ids: ["554", "550"]
+    log_patterns:
+      - "sudo"
+      - "bash -i"
+      - "python -c"
+      - "perl -e"
+      - "nc -e"
+      - "ncat"
+      - "wget.*http"
+      - "curl.*http"
+    tags: ["execution", "shell", "command"]
+
+  # ── Defense Evasion ──────────────────────────────────────────────────────────
+  - id: XDR-006
+    name: "Rootkit / Process Injection Detected"
+    description: "Wazuh rootcheck detected hidden process or module injection"
+    severity: CRITICAL
+    score_weight: 75
+    mitre:
+      tactic: "Defense Evasion"
+      technique: "T1055"
+      name: "Process Injection"
+    wazuh_rule_ids: ["87", "510"]
+    log_patterns:
+      - "rootkit"
+      - "hidden process"
+      - "process injection"
+    tags: ["defense-evasion", "rootkit"]
+
+  # ── Discovery ────────────────────────────────────────────────────────────────
+  - id: XDR-007
+    name: "Network Port Scan Detected"
+    description: "Rapid connection attempts to multiple ports indicates active network reconnaissance"
+    severity: MEDIUM
+    score_weight: 25
+    mitre:
+      tactic: "Discovery"
+      technique: "T1046"
+      name: "Network Service Discovery"
+    wazuh_rule_ids: ["40101", "40102"]
+    log_patterns:
+      - "port scan"
+      - "SYN flood"
+      - "SCAN"
+    tags: ["discovery", "network-scan", "reconnaissance"]
+
+  # ── Initial Access ───────────────────────────────────────────────────────────
+  - id: XDR-008
+    name: "Web Application Exploit Attempt"
+    description: "SQL injection, XSS, or directory traversal attempt against web application"
+    severity: HIGH
+    score_weight: 60
+    mitre:
+      tactic: "Initial Access"
+      technique: "T1190"
+      name: "Exploit Public-Facing Application"
+    wazuh_rule_ids: ["31101", "31103", "31104"]
+    log_patterns:
+      - "SQL injection"
+      - "XSS"
+      - "../../../"
+      - "UNION SELECT"
+      - "<script>"
+    tags: ["initial-access", "web-exploit", "injection"]
+
+  # ── Exfiltration ─────────────────────────────────────────────────────────────
+  - id: XDR-009
+    name: "Data Exfiltration Over C2 Channel"
+    description: "Large volume data transfer to external IP — potential exfiltration"
+    severity: CRITICAL
+    score_weight: 80
+    mitre:
+      tactic: "Exfiltration"
+      technique: "T1041"
+      name: "Exfiltration Over C2 Channel"
+    wazuh_rule_ids: ["40700", "40701"]
+    log_patterns:
+      - "data exfil"
+      - "large transfer"
+      - "FTP upload"
+    tags: ["exfiltration", "data-loss", "c2"]
+
+  # ── Privilege Escalation ─────────────────────────────────────────────────────
+  - id: XDR-010
+    name: "Sudo / Root Privilege Escalation"
+    description: "User escalated to root via sudo or setuid binary exploitation"
+    severity: HIGH
+    score_weight: 65
+    mitre:
+      tactic: "Privilege Escalation"
+      technique: "T1548"
+      sub_technique: "T1548.003"
+      name: "Abuse Elevation Control Mechanism: Sudo and Sudo Caching"
+    wazuh_rule_ids: ["5401", "5402"]
+    log_patterns:
+      - "sudo: .* COMMAND"
+      - "su: pam_unix"
+      - "user: root"
+    tags: ["privilege-escalation", "sudo", "root"]

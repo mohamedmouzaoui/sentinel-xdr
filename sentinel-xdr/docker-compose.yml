@@ -1,0 +1,227 @@
+version: '3.8'
+
+# ═══════════════════════════════════════════════════════════════════
+# SENTINEL XDR PRO — Version complète (4.7 Go RAM)
+# Services: FastAPI · React · PostgreSQL · Redis
+#           TheHive 5 · Cassandra · Prometheus · Grafana
+#
+# Usage:
+#   cp .env.example .env
+#   docker compose up -d --build
+#   http://localhost:3000  →  admin / SentinelXDR@2024!
+# ═══════════════════════════════════════════════════════════════════
+
+services:
+
+  postgres:
+    image: postgres:16-alpine
+    container_name: sentinel-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: xdr
+      POSTGRES_PASSWORD: xdr_secure_pass
+      POSTGRES_DB: xdrdb
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    networks:
+      - sentinel-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U xdr -d xdrdb"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  redis:
+    image: redis:7-alpine
+    container_name: sentinel-redis
+    restart: unless-stopped
+    command: redis-server --appendonly yes --maxmemory 128mb --maxmemory-policy allkeys-lru
+    volumes:
+      - redis_data:/data
+    ports:
+      - "6379:6379"
+    networks:
+      - sentinel-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  cassandra:
+    image: cassandra:4.1
+    container_name: sentinel-cassandra
+    restart: unless-stopped
+    environment:
+      - CASSANDRA_CLUSTER_NAME=sentinel
+      - HEAP_NEWSIZE=128M
+      - MAX_HEAP_SIZE=512M
+    volumes:
+      - cassandra_data:/var/lib/cassandra
+    networks:
+      - sentinel-network
+    healthcheck:
+      test: ["CMD-SHELL", "nodetool status | grep -q '^UN'"]
+      interval: 30s
+      timeout: 10s
+      retries: 10
+      start_period: 90s
+
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.12.0
+    container_name: sentinel-elasticsearch
+    restart: unless-stopped
+    environment:
+      - discovery.type=single-node
+      - xpack.security.enabled=false
+      - "ES_JAVA_OPTS=-Xms256m -Xmx512m"
+    volumes:
+      - elasticsearch_data:/usr/share/elasticsearch/data
+    ports:
+      - "9200:9200"
+    networks:
+      - sentinel-network
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:9200/_cluster/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+
+  thehive:
+    image: strangebee/thehive:5.2
+    container_name: sentinel-thehive
+    restart: unless-stopped
+    depends_on:
+      cassandra:
+        condition: service_healthy
+      elasticsearch:
+        condition: service_healthy
+    environment:
+      - JVM_OPTS=-Xms256m -Xmx512m
+    command:
+      - --storage-provider
+      - cassandra
+      - --cassandra-hostname
+      - cassandra
+      - --index-backend
+      - elasticsearch
+      - --elasticsearch-hostname
+      - elasticsearch
+      - --no-config-secret
+      - --secret
+      - SentinelTheHiveSecret2024
+    ports:
+      - "9000:9000"
+    networks:
+      - sentinel-network
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:9000/api/status"]
+      interval: 30s
+      timeout: 10s
+      retries: 10
+      start_period: 120s
+
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile.backend
+    container_name: sentinel-backend
+    restart: unless-stopped
+    environment:
+      - DATABASE_URL=postgresql+asyncpg://xdr:xdr_secure_pass@postgres:5432/xdrdb
+      - REDIS_URL=redis://redis:6379/0
+      - SECRET_KEY=${SECRET_KEY:-SentinelXDR_ChangeMe_2024}
+      - APP_ENV=production
+      - DEBUG=false
+      - UDP_HOST=0.0.0.0
+      - UDP_PORT=5005
+      - ALLOWED_ORIGINS=http://localhost:3000,http://localhost
+      - DEFAULT_TENANT_ID=tenant_default
+      - DEFAULT_TENANT_NAME=Default Organization
+      - SLA_CRITICAL_MINUTES=15
+      - SLA_HIGH_MINUTES=60
+      - SLA_MEDIUM_MINUTES=240
+      - THEHIVE_URL=http://thehive:9000
+      - THEHIVE_API_KEY=${THEHIVE_API_KEY:-}
+      - ABUSEIPDB_API_KEY=${ABUSEIPDB_API_KEY:-}
+      - VIRUSTOTAL_API_KEY=${VIRUSTOTAL_API_KEY:-}
+      - SLACK_WEBHOOK_URL=${SLACK_WEBHOOK_URL:-}
+      - SLACK_CHANNEL=${SLACK_CHANNEL:-#soc-alerts}
+    ports:
+      - "8000:8000"
+      - "5005:5005/udp"
+    volumes:
+      - ./logs:/app/logs
+      - ./config:/app/config:ro
+    networks:
+      - sentinel-network
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:8000/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 40s
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile.frontend
+    container_name: sentinel-frontend
+    restart: unless-stopped
+    ports:
+      - "3000:80"
+    networks:
+      - sentinel-network
+    depends_on:
+      backend:
+        condition: service_healthy
+
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: sentinel-prometheus
+    restart: unless-stopped
+    volumes:
+      - ./config/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data:/prometheus
+    ports:
+      - "9090:9090"
+    networks:
+      - sentinel-network
+
+  grafana:
+    image: grafana/grafana:latest
+    container_name: sentinel-grafana
+    restart: unless-stopped
+    environment:
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_SECURITY_ADMIN_PASSWORD=SentinelAdmin2024
+      - GF_USERS_ALLOW_SIGN_UP=false
+    volumes:
+      - grafana_data:/var/lib/grafana
+    ports:
+      - "3001:3000"
+    networks:
+      - sentinel-network
+    depends_on:
+      - prometheus
+
+volumes:
+  postgres_data:
+  redis_data:
+  cassandra_data:
+  elasticsearch_data:
+  prometheus_data:
+  grafana_data:
+
+networks:
+  sentinel-network:
+    driver: bridge
