@@ -1,9 +1,9 @@
-#Sentinel XDR  (v3.0) — Next-Gen SecOps Platform
+# Sentinel XDR  (v3.0) — Next-Gen SecOps Platform
 Sentinel XDR  is an enterprise-grade, lightweight Extended Detection and Response (XDR) and Security Operations Center (SOC) platform. Engineered for rapid deployment on resource-constrained environments (minimum 4.7 GB RAM), it orchestrates threat detection, machine learning analytics, automated response (SOAR), and incident management into a single pane of glass.
 
 By leveraging a robust microservices architecture containerized with Docker, Sentinel XDR  bridges the gap between raw telemetry ingestion and actionable threat intelligence.
 
-🛠️ Key Capabilities & Core Architecture
+.. Key Capabilities & Core Architecture
 1. Unified Incident Management & Workflow
 Structured Incident Lifecycles: Features a comprehensive workflow spanning 7 operational statuses, built-in Service Level Agreement (SLA) tracking, and an interactive, real-time forensic timeline.
 
@@ -32,7 +32,8 @@ Database Backbone: Fueled by Cassandra for high-throughput, distributed data ret
 
 Telemetry & Observability: Production-ready metrics scraping and dashboarding driven by a combined Prometheus and Grafana stack.
 
-.Tech Stack
+.. 
+Tech Stack
 Frontend: React / Modern Web Framework (WebSocket-enabled)
 
 Backend & APIs: Python (FastAPI/Flask likely) / Node.js, REST API Docs
